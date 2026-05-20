@@ -1,0 +1,28 @@
+# Source build artefacts — only the encrypted dashboard belongs on GitHub
+build.py
+read_xlsx.py
+probe_monday.py
+encrypt_dashboard.py
+xlsx_data.txt
+data.json
+_patch.py
+
+# Local Claude / IDE
+.claude/
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Source Excel files — never commit confidential workbooks
+*.xlsx
+*.xls
+*.xlsm
