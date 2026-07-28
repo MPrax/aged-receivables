@@ -7,6 +7,9 @@ xlsx_data.txt
 data.json
 _patch.py
 
+# Vendor JS cache (inlined into index.html at build time)
+vendor/
+
 # Local Claude / IDE
 .claude/
 .vscode/
