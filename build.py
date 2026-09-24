@@ -665,6 +665,39 @@ for p in files:
 if not file_names:
     sys.exit("ERROR: No files could be parsed.")
 
+# ── Prior-period comparison ──────────────────────────────────────────────
+# The workbook's own "Prior period" row covers the UK tab only, and has been
+# left stale before. Using it for every view meant the US tab compared US
+# current against the UK prior balance (and Group compared against UK only).
+# Derive the comparison from the actual previous cash update instead, per
+# entity. file_names is newest-first, so index i+1 is the previous period.
+_CMP_KEYS = ("balance", "notDue", "d1_31", "d32_61", "d63_92", "over92")
+
+def _snapshot(totals, label):
+    out = {k: num((totals or {}).get(k, 0)) for k in _CMP_KEYS}
+    out["date"] = label
+    return out
+
+for _i, _name in enumerate(file_names):
+    if _i + 1 >= len(file_names):
+        continue                       # oldest file keeps what it parsed
+    cur  = file_data[_name]
+    prev = file_data[file_names[_i + 1]]
+    label = prev.get("reportDate", "")
+    cur["totalsPrev"] = _snapshot(prev.get("totals"), label)
+    cur["prevDate"]   = label
+    cur_ents, prev_ents = cur.get("entities") or {}, prev.get("entities") or {}
+    for ent in ("UK", "US"):
+        if ent not in cur_ents:
+            continue
+        if ent in prev_ents:
+            cur_ents[ent]["totalsPrev"] = _snapshot(prev_ents[ent].get("totals"), label)
+        elif ent == "UK":
+            # previous file predates the US entity, so its total was UK only
+            cur_ents[ent]["totalsPrev"] = _snapshot(prev.get("totals"), label)
+        else:
+            cur_ents[ent]["totalsPrev"] = {}   # no comparable prior for US
+
 default_file = file_names[0]
 default_rows = len(file_data[default_file]["receivables"])
 print(f"\n{len(file_names)} files ready.")
@@ -1492,7 +1525,7 @@ function _viewForFile(file) {
     ...base,
     receivables:      e.receivables || [],
     totals:           e.totals && Object.keys(e.totals).length ? e.totals : base.totals,
-    totalsPrev:       (e.totalsPrev && Object.keys(e.totalsPrev).length) ? e.totalsPrev : (base.totalsPrev || {}),
+    totalsPrev:       (e.totalsPrev && Object.keys(e.totalsPrev).length) ? e.totalsPrev : {},
     collections:      e.collections || [],
     collectionsTotal: e.collectionsTotal || 0,
   };
@@ -2249,7 +2282,13 @@ function renderCashLine() {
 
 // ── period comparison ──────────────────────────────────────────────────
 function renderComparison() {
-  const c = D.totals, p = D.totalsPrev;
+  const c = D.totals, p = D.totalsPrev || {};
+  const hasPrev = p && typeof p.balance === "number";
+  if (!hasPrev) {
+    document.getElementById("comparison-table").innerHTML =
+      `<p class="text-xs text-slate-400 italic py-4">No comparable prior period for this entity.</p>`;
+    return;
+  }
   function deltaHtml(cur, prv, hib) {
     const d = cur - prv;
     if (Math.abs(d) < 0.01) return '<span class="text-slate-400">—</span>';
