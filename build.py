@@ -831,7 +831,7 @@ def _fetch_monday_tbi():
                   "color_mm0v4cv1",
                   "color_mm0vvyz3",
                   "color_mm0vj2th",
-                  "lookup_mm127xxv"
+                  "lookup_mm86a7s8"
                 ]) {
                   id text
                   ... on MirrorValue { display_value }
@@ -874,7 +874,7 @@ def _fetch_monday_tbi():
             continue
         col_text = {cv["id"]: (cv.get("text") or "").strip() for cv in item["column_values"]}
         col_dv   = {cv["id"]: (cv.get("display_value") or "")  for cv in item["column_values"]}
-        dv = _sum_mirror_value(col_dv.get("lookup_mm127xxv", ""))
+        dv = _sum_mirror_value(col_dv.get("lookup_mm86a7s8", ""))
         results.append({
             "name":      item["name"],
             "dealValue": dv,
@@ -2586,7 +2586,7 @@ async function refreshTBIFromMonday() {
   errEl.textContent = "";
 
   try {
-    // Single query: billing board → status cols + Deal Value mirror column (lookup_mm127xxv)
+    // Single query: billing board → status cols + Deal Value mirror column (lookup_mm86a7s8)
     function fmtGbp(raw) {
       const n = parseFloat(String(raw || "").replace(/,/g, ""));
       return isNaN(n) ? "" : "£" + n.toLocaleString("en-GB", {maximumFractionDigits: 0});
@@ -2610,7 +2610,7 @@ async function refreshTBIFromMonday() {
                 "color_mm0v4cv1",
                 "color_mm0vvyz3",
                 "color_mm0vj2th",
-                "lookup_mm127xxv"
+                "lookup_mm86a7s8"
               ]) {
                 id text
                 ... on MirrorValue { display_value }
@@ -2639,7 +2639,7 @@ async function refreshTBIFromMonday() {
       }
       tbi.push({
         name:      it.name,
-        dealValue: sumMirrorValue(colDV["lookup_mm127xxv"]),
+        dealValue: sumMirrorValue(colDV["lookup_mm86a7s8"]),
         group:     groupLabel,
         io:        colText["color_mm0v4cv1"] || "",
         ncf:       colText["color_mm0vvyz3"] || "",
