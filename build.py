@@ -46,21 +46,27 @@ def parse_bank_report():
         return None
 
     rows = list(wb["Bal Summary"].iter_rows(values_only=True))
-    hdr  = rows[1]  # row 2 is the column header row
-    try:
-        total_col = next(i for i, v in enumerate(hdr) if v == "TOTAL")
-        date_col  = next(i for i, v in enumerate(hdr) if v == "Date")
-    except StopIteration:
-        print("  ! Could not locate TOTAL or Date column in Bal Summary")
+    # Find the header row rather than assuming row 2: it moved to row 3 in the
+    # Oct 2026 rebuild, which also renamed the sterling group total TOTAL -> Group.
+    hdr_idx = hdr = None
+    for i, r in enumerate(rows[:8]):
+        names = [str(v).strip() for v in r if v is not None]
+        if "Date" in names and any(n in ("TOTAL", "Group") for n in names):
+            hdr_idx, hdr = i, r
+            break
+    if hdr is None:
+        print("  ! Could not locate a Date + TOTAL/Group header row in Bal Summary")
         return None
+    total_col = next(i for i, v in enumerate(hdr) if str(v).strip() in ("TOTAL", "Group"))
+    date_col  = next(i for i, v in enumerate(hdr) if str(v).strip() == "Date")
 
     latest_val  = None
     latest_date = ""
     series_2026 = []
 
-    for r in rows[2:]:
-        d = r[date_col]
-        t = r[total_col]
+    for r in rows[hdr_idx + 1:]:
+        d = r[date_col] if date_col < len(r) else None
+        t = r[total_col] if total_col < len(r) else None
         if not isinstance(d, (datetime.datetime, datetime.date)): continue
         if not isinstance(t, (int, float)) or t <= 0: continue
         # Skip today (and anything later): the current day's transactions are
@@ -111,44 +117,62 @@ def parse_bank_payments():
 
     payments = []
 
-    # ── PUB GBP: col18=Narrative, col19=CustRef, col21=ValueDate, col22=CreditAmt ──
-    if "PUB GBP" in wb.sheetnames:
-        for row in wb["PUB GBP"].iter_rows(values_only=True):
-            if len(row) < 23:
-                continue
-            credit_amt = row[22]
-            if not isinstance(credit_amt, (int, float)) or credit_amt <= 0:
-                continue
-            narrative = cv(row[18])
-            cust_ref  = cv(row[19])
-            if not narrative and not cust_ref:
-                continue
-            payments.append({
-                "narrative": narrative,
-                "custRef":   cust_ref,
-                "date":      cv(row[21]),
-                "amount":    round(float(credit_amt), 2),
-                "currency":  "GBP",
-            })
+    def _sheet(*names):
+        return next((wb[n] for n in names if n in wb.sheetnames), None)
 
-    # ── USD Chase: col0=Date, col1=Description, col4=Amount (positive=credit) ──
-    if "USD Chase" in wb.sheetnames:
-        for row in wb["USD Chase"].iter_rows(values_only=True):
-            if len(row) < 5:
-                continue
-            amount = row[4]
-            if not isinstance(amount, (int, float)) or amount <= 0:
-                continue
-            narrative = cv(row[1])
-            if not narrative:
-                continue
-            payments.append({
-                "narrative": narrative,
-                "custRef":   "",
-                "date":      cv(row[0]),
-                "amount":    round(float(amount), 2),
-                "currency":  "USD",
-            })
+    def _cols(ws, wanted):
+        """Header name -> column index, from row 1. None if a name is missing."""
+        hdr = next(ws.iter_rows(max_row=1, values_only=True), ())
+        idx = {str(v).strip().lower(): i for i, v in enumerate(hdr) if v is not None}
+        return {w: idx.get(w.lower()) for w in wanted}
+
+    def _val(row, i):
+        return row[i] if i is not None and i < len(row) else None
+
+    # ── HSBC GBP (was "PUB GBP" before the Oct 2026 rebuild) ──
+    ws = _sheet("HSBC GBP", "PUB GBP")
+    if ws:
+        c = _cols(ws, ["Narrative", "Customer reference", "Value date", "Credit amount"])
+        if None in c.values():
+            print(f"  ! GBP sheet headers not recognised: {c}")
+        else:
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                credit_amt = _val(row, c["Credit amount"])
+                if not isinstance(credit_amt, (int, float)) or credit_amt <= 0:
+                    continue
+                narrative = cv(_val(row, c["Narrative"]))
+                cust_ref  = cv(_val(row, c["Customer reference"]))
+                if not narrative and not cust_ref:
+                    continue
+                payments.append({
+                    "narrative": narrative,
+                    "custRef":   cust_ref,
+                    "date":      cv(_val(row, c["Value date"])),
+                    "amount":    round(float(credit_amt), 2),
+                    "currency":  "GBP",
+                })
+
+    # ── Chase USD (was "USD Chase"; its columns shifted in the same rebuild) ──
+    ws = _sheet("Chase USD", "USD Chase")
+    if ws:
+        c = _cols(ws, ["Posting Date", "Description", "Amount"])
+        if None in c.values():
+            print(f"  ! Chase sheet headers not recognised: {c}")
+        else:
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                amount = _val(row, c["Amount"])
+                if not isinstance(amount, (int, float)) or amount <= 0:
+                    continue
+                narrative = cv(_val(row, c["Description"]))
+                if not narrative:
+                    continue
+                payments.append({
+                    "narrative": narrative,
+                    "custRef":   "",
+                    "date":      cv(_val(row, c["Posting Date"])),
+                    "amount":    round(float(amount), 2),
+                    "currency":  "USD",
+                })
 
     gbp_n = sum(1 for p in payments if p["currency"] == "GBP")
     usd_n = sum(1 for p in payments if p["currency"] == "USD")
