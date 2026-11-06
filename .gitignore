@@ -29,3 +29,6 @@ Thumbs.db
 *.xlsx
 *.xls
 *.xlsm
+
+# Monday API token - never commit
+.monday_token
